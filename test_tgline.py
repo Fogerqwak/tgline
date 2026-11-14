@@ -20,4 +20,29 @@ p = tgline.build_parser()
 a = p.parse_args(["send", "Mom", "hi", "there", "-r", "5"])
 assert (a.cmd, a.chat, a.text, a.reply) == ("send", "Mom", ["hi", "there"], 5)
 assert tgline.COMMANDS["msg"] is tgline.cmd_send
+from datetime import datetime, timedelta, timezone
+now = datetime.now(timezone.utc)
+assert abs((now - tgline.parse_since("2h")) - timedelta(hours=2)) < timedelta(seconds=5)
+assert abs((now - tgline.parse_since("1w")) - timedelta(weeks=1)) < timedelta(seconds=5)
+assert tgline.parse_since("2026-11-14").tzinfo is not None
+try:
+    tgline.parse_since("yesterday")
+    raise AssertionError("should reject")
+except Exception as e:
+    assert "30m" in str(e)
+
+import os, tempfile
+tgline.CONFIG = tgline.Path(tempfile.mkdtemp()) / "config.json"
+tgline.HOME = tgline.CONFIG.parent
+os.environ.pop("TGLINE_READ_ONLY", None)
+tgline.guard(p.parse_args(["send", "me", "x"]))       # off: allowed
+import asyncio
+asyncio.run(tgline.cmd_lock(None, None))
+for argv in (["send", "me", "x"], ["file", "me", "a"], ["read", "me", "-m"], ["logout"]):
+    try:
+        tgline.guard(p.parse_args(argv))
+        raise AssertionError(f"{argv} not blocked")
+    except tgline.CliError:
+        pass
+tgline.guard(p.parse_args(["read", "me", "--since", "1d"]))  # reading still ok
 print("ok")
